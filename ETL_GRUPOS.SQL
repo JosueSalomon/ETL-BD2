@@ -1,0 +1,91 @@
+CREATE OR REPLACE PROCEDURE ETL_GRUPOS AS
+    V_FECHA_INICIO DATE;
+    V_FECHA_FIN DATE := TRUNC(SYSDATE); -- Fecha actual
+    V_HORA_INICIO_PROCESO DATE := SYSDATE;
+BEGIN
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE C##DWH.TBL_GRUPOS';
+
+    SELECT MIN (FECHA_CREACION )INTO V_FECHA_INICIO FROM TBL_GRUPOS;
+    
+    IF V_FECHA_INICIO IS NULL THEN
+        DBMS_OUTPUT.PUT_LINE('No hay datos para procesar.');
+        RETURN;
+    END IF;
+    
+    WHILE V_FECHA_INICIO <= V_FECHA_FIN LOOP
+    
+    DELETE FROM C##DWH.TBL_GRUPOS
+    WHERE TRUNC(FECHA_CREACION) = TRUNC(V_FECHA_INICIO);
+    
+    INSERT INTO C##DWH.TBL_GRUPOS(
+        ID_GRUPOS,
+        NOMBRE_GRUPO,
+        FECHA_CREACION
+    )
+    SELECT ID_GRUPO,
+            NOMBRE_GRUPO,
+            FECHA_CREACION
+    FROM TBL_GRUPOS
+    WHERE TRUNC(FECHA_CREACION) = TRUNC(V_FECHA_INICIO);
+    
+    COMMIT;
+    
+            V_FECHA_INICIO := V_FECHA_INICIO + 1;
+    END LOOP;
+     P_ETL_LOG(
+        P_NOMBRE_ETL => $$PLSQL_UNIT,
+        P_FECHA_HORA_INICIO => sysdate,
+        P_ESTATUS => 'S',
+        P_ERROR => ''
+    );
+    -- Hacer commit para confirmar los cambios en la base de datos
+    COMMIT;
+    EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No se encontraron datos.');
+        -- Agregar al log de errores
+        P_ETL_LOG(
+            P_NOMBRE_ETL => $$PLSQL_UNIT,
+            P_FECHA_HORA_INICIO => sysdate,
+            P_ESTATUS => 'F',
+            P_ERROR => SQLCODE || ' - ' || SQLERRM
+        );
+
+END ETL_GRUPOS;
+
+BEGIN
+    ETL_GRUPOS;
+END;
+
+BEGIN
+    DBMS_SCHEDULER.CREATE_SCHEDULE (
+        SCHEDULE_NAME => 'INTERVALO_DIARIO',
+        START_DATE => TRUNC(SYSDATE),
+        REPEAT_INTERVAL => 'FREQ=DAILY; INTERVAL=1',
+        COMMENTS => 'EJECUCIÓN DIARIA'
+    );
+END;
+/
+BEGIN
+    DBMS_SCHEDULER.CREATE_PROGRAM(
+        PROGRAM_NAME => 'PR_ETL_GRUPOS',
+        PROGRAM_TYPE => 'PLSQL_BLOCK',
+        PROGRAM_ACTION => 'BEGIN ETL_GRUPOS; END;',
+        ENABLED => TRUE,
+        COMMENTS => 'EJECUCION PROGRAMA ETL_GRUPOS'
+    );
+END;
+
+BEGIN
+    DBMS_SCHEDULER.CREATE_JOB (
+        JOB_NAME => 'JOB_ETL_GRUPOS',
+        PROGRAM_NAME => 'PR_ETL_GRUPOS',
+        SCHEDULE_NAME => 'INTERVALO_DIARIO',
+        ENABLED => TRUE,
+        AUTO_DROP => FALSE,
+        COMMENTS => 'EJECUCION DEL JOB ETL_GRUPOS'
+    );
+END;
+
+
+SELECT * FROM TBL_GRUPOS; 
