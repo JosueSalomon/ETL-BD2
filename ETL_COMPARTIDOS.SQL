@@ -1,0 +1,20 @@
+CREATE OR REPLACE PROCEDURE ETL_COMPARTIDOS AS
+
+BEGIN
+    EXECUTE IMMEDIATE 'TRUNCATE TABLE C##DWH.TBL_COMPARTIDOS';
+    
+    insert into C##DWH.TBL_COMPARTIDOS(
+        ID_COMPARTIDO,
+        ID_ARCHIVO,
+        ID_USAURIO
+    )
+    SELECT id_compartidos,id_archivo_compartido,id_propietario FROM TBL_COMPARTIDOS;
+    COMMIT;
+
+END ETL_COMPARTIDOS;
+
+BEGIN
+    ETL_COMPARTIDOS;
+END;
+
+SELECT id_compartidos,id_archivo_compartido,id_propietario FROM TBL_COMPARTIDOS;
